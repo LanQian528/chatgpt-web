@@ -5,7 +5,6 @@ import { ChatGPTAPI, ChatGPTUnofficialProxyAPI } from 'chatgpt'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import httpsProxyAgent from 'https-proxy-agent'
 import fetch from 'node-fetch'
-import axios from 'axios'
 import { getCacheConfig, getOriginConfig } from '../storage/config'
 import { sendResponse } from '../utils'
 import { isNotEmptyString } from '../utils/is'
@@ -72,11 +71,15 @@ export async function initApi() {
       accessToken: config.accessToken,
       debug: !config.apiDisableDebug,
     }
+
     if (isNotEmptyString(OPENAI_API_MODEL))
       options.model = OPENAI_API_MODEL
 
-    if (isNotEmptyString(config.reverseProxy))
-      options.apiReverseProxyUrl = config.reverseProxy
+    if (isNotEmptyString(config.reverseProxy)) {
+      options.apiReverseProxyUrl = isNotEmptyString(config.reverseProxy)
+        ? config.reverseProxy
+        : 'https://bypass.churchless.tech/api/conversation'
+    }
 
     await setupProxy(options)
 
@@ -122,6 +125,11 @@ async function chatReplyProcess(options: RequestOptions) {
 }
 
 async function fetchBalance() {
+  // 计算起始日期和结束日期
+  const now = new Date().getTime()
+  const startDate = new Date(now - 90 * 24 * 60 * 60 * 1000)
+  const endDate = new Date(now + 24 * 60 * 60 * 1000)
+
   const config = await getCacheConfig()
   const OPENAI_API_KEY = config.apiKey
   const OPENAI_API_BASE_URL = config.apiBaseUrl
@@ -133,15 +141,49 @@ async function fetchBalance() {
     ? OPENAI_API_BASE_URL
     : 'https://api.openai.com'
 
+  // 查是否订阅
+  const urlSubscription = `${API_BASE_URL}/v1/dashboard/billing/subscription`
+  // 查普通账单
+  // const urlBalance = `${API_BASE_URL}/dashboard/billing/credit_grants`
+  // 查使用量
+  const urlUsage = `${API_BASE_URL}/v1/dashboard/billing/usage?start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}`
+
+  const headers = {
+    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+    'Content-Type': 'application/json',
+  }
+
   try {
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` }
-    const response = await axios.get(`${API_BASE_URL}/dashboard/billing/credit_grants`, { headers })
-    const balance = response.data.total_available ?? 0
+    // 获取API限额
+    let response = await fetch(urlSubscription, { headers })
+    if (!response.ok) {
+      console.error('您的账户已被封禁，请登录OpenAI进行查看。')
+      return
+    }
+    const subscriptionData = await response.json()
+    const totalAmount = subscriptionData.hard_limit_usd
+
+    // 获取已使用量
+    response = await fetch(urlUsage, { headers })
+    const usageData = await response.json()
+    const totalUsage = usageData.total_usage / 100
+
+    // 计算剩余额度
+    const balance = totalAmount - totalUsage
+
     return Promise.resolve(balance.toFixed(3))
   }
   catch {
     return Promise.resolve('-')
   }
+}
+
+function formatDate(date) {
+  const year = date.getFullYear()
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 async function chatConfig() {

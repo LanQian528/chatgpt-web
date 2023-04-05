@@ -1,6 +1,9 @@
 import { MongoClient, ObjectId } from 'mongodb'
+import * as dotenv from 'dotenv'
 import { ChatInfo, ChatRoom, Status, UserInfo } from './model'
 import type { ChatOptions, Config } from './model'
+
+dotenv.config()
 
 const url = process.env.MONGODB_URL
 const client = new MongoClient(url)
@@ -148,9 +151,9 @@ export async function getUserById(userId: string): Promise<UserInfo> {
   return await userCol.findOne({ _id: new ObjectId(userId) }) as UserInfo
 }
 
-export async function verifyUser(email: string) {
+export async function verifyUser(email: string, status: Status) {
   email = email.toLowerCase()
-  return await userCol.updateOne({ email }, { $set: { status: Status.Normal, verifyTime: new Date().toLocaleString() } })
+  return await userCol.updateOne({ email }, { $set: { status, verifyTime: new Date().toLocaleString() } })
 }
 
 export async function getConfig(): Promise<Config> {
