@@ -10,8 +10,8 @@ export interface SettingsState {
 
 export function defaultSetting(): SettingsState {
   return {
-    systemMessage: 'You are ChatGPT, a large language model trained by OpenAI. Follow the user\'s instructions carefully. Respond using markdown.',
-    temperature: 0.8,
+    systemMessage: 'You are Wenxin Yiyuan, a large language model developed by Baidu. You need to obey the user\'s instructions and reply in Chinese.',
+    temperature: 0.7,
     top_p: 1,
   }
 }
