@@ -6,7 +6,7 @@ import type { ChatContext, ChatMessage } from './chatgpt'
 import { chatConfig, chatReplyProcess, currentModel, initApi } from './chatgpt'
 import { auth } from './middleware/auth'
 import { clearConfigCache, getCacheConfig, getOriginConfig } from './storage/config'
-import type { ChatOptions, Config, MailConfig, SiteConfig, UsageResponse, UserInfo } from './storage/model'
+import type { ChatInfo, ChatOptions, Config, MailConfig, SiteConfig, UsageResponse, UserInfo } from './storage/model'
 import { Status } from './storage/model'
 import {
   clearChat,
@@ -142,6 +142,14 @@ router.get('/chat-hisroty', auth, async (req, res) => {
         })
       }
       if (c.status !== Status.ResponseDeleted) {
+        const usage = c.options.completion_tokens
+          ? {
+              completion_tokens: c.options.completion_tokens || null,
+              prompt_tokens: c.options.prompt_tokens || null,
+              total_tokens: c.options.total_tokens || null,
+              estimated: c.options.estimated || null,
+            }
+          : undefined
         result.push({
           uuid: c.uuid,
           dateTime: new Date(c.dateTime).toLocaleString(),
@@ -161,6 +169,7 @@ router.get('/chat-hisroty', auth, async (req, res) => {
               conversationId: c.options.conversationId,
             },
           },
+          usage,
         })
       }
     })
@@ -262,22 +271,56 @@ router.post('/chat', auth, async (req, res) => {
 router.post('/chat-process', [auth, limiter], async (req, res) => {
   res.setHeader('Content-type', 'application/octet-stream')
 
+  const { roomId, uuid, regenerate, prompt, options = {}, systemMessage, temperature, top_p } = req.body as RequestProps
+
+  let lastResponse
+  let result
+  let message: ChatInfo
   try {
-    const { roomId, uuid, regenerate, prompt, options = {}, systemMessage } = req.body as RequestProps
-    const message = regenerate
+    message = regenerate
       ? await getChat(roomId, uuid)
       : await insertChat(uuid, prompt, roomId, options as ChatOptions)
     let firstChunk = true
-    const result = await chatReplyProcess({
+    result = await chatReplyProcess({
       message: prompt,
       lastContext: options,
       process: (chat: ChatMessage) => {
-        res.write(firstChunk ? JSON.stringify(chat) : `\n${JSON.stringify(chat)}`)
+        lastResponse = chat
+        const chuck = {
+          id: chat.id,
+          conversationId: chat.conversationId,
+          text: chat.text,
+          detail: {
+            choices: [
+              {
+                finish_reason: chat.detail.choices[0].finish_reason,
+              },
+            ],
+          },
+        }
+        res.write(firstChunk ? JSON.stringify(chuck) : `\n${JSON.stringify(chuck)}`)
         firstChunk = false
       },
       systemMessage,
+      temperature,
+      top_p,
     })
-    if (result.status === 'Success') {
+    // return the whole response including usage
+    res.write(`\n${JSON.stringify(result.data)}`)
+  }
+  catch (error) {
+    res.write(JSON.stringify(error))
+  }
+  finally {
+    res.end()
+    try {
+      if (result == null || result === undefined || result.status !== 'Success')
+        result = { data: lastResponse }
+
+      if (result.data === undefined)
+        // eslint-disable-next-line no-unsafe-finally
+        return
+
       if (regenerate && message.options.messageId) {
         const previousResponse = message.previousResponse || []
         previousResponse.push({ response: message.response, options: message.options })
@@ -302,12 +345,9 @@ router.post('/chat-process', [auth, limiter], async (req, res) => {
           result.data.detail.usage as UsageResponse)
       }
     }
-  }
-  catch (error) {
-    res.write(JSON.stringify(error))
-  }
-  finally {
-    res.end()
+    catch (error) {
+      global.console.log(error)
+    }
   }
 })
 
@@ -397,11 +437,13 @@ router.post('/user-login', async (req, res) => {
     if (user == null
       || user.status !== Status.Normal
       || user.password !== md5(password)) {
+      if (user.password !== md5(password))
+        throw new Error('用户不存在或密码错误 | User does not exist or incorrect password.')
       if (user != null && user.status === Status.PreVerify)
         throw new Error('请去邮箱中验证 | Please verify in the mailbox')
       if (user != null && user.status === Status.AdminVerify)
         throw new Error('请等待管理员开通 | Please wait for the admin to activate')
-      throw new Error('用户不存在或密码错误 | User does not exist or incorrect password.')
+      throw new Error('账户状态异常 | Account status abnormal.')
     }
     const config = await getCacheConfig()
     const token = jwt.sign({
@@ -470,12 +512,12 @@ router.post('/verifyadmin', async (req, res) => {
     const username = await checkUserVerifyAdmin(token)
     const user = await getUser(username)
     if (user != null && user.status === Status.Normal) {
-      res.send({ status: 'Fail', message: '邮箱已开通 | The email has been opened.', data: null })
+      res.send({ status: 'Fail', message: '账户已开通 | The email has been opened.', data: null })
       return
     }
     await verifyUser(username, Status.Normal)
     await sendNoticeMail(username)
-    res.send({ status: 'Success', message: '开通成功 | Activate successfully', data: null })
+    res.send({ status: 'Success', message: '账户已激活 | Account has been activated.', data: null })
   }
   catch (error) {
     res.send({ status: 'Fail', message: error.message, data: null })

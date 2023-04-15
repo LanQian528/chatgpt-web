@@ -35,8 +35,8 @@ export async function initApi() {
     throw new Error('Missing OPENAI_API_KEY or OPENAI_ACCESS_TOKEN environment variable')
 
   if (isNotEmptyString(config.apiKey)) {
-    const OPENAI_API_BASE_URL = process.env.OPENAI_API_BASE_URL
-    const OPENAI_API_MODEL = process.env.OPENAI_API_MODEL
+    const OPENAI_API_BASE_URL = config.apiBaseUrl
+    const OPENAI_API_MODEL = config.apiModel
     const model = isNotEmptyString(OPENAI_API_MODEL) ? OPENAI_API_MODEL : 'gpt-3.5-turbo'
 
     const options: ChatGPTAPIOptions = {
@@ -66,19 +66,12 @@ export async function initApi() {
     apiModel = 'ChatGPTAPI'
   }
   else {
-    const OPENAI_API_MODEL = process.env.OPENAI_API_MODEL
+    const model = isNotEmptyString(config.apiModel) ? config.apiModel : 'gpt-3.5-turbo'
     const options: ChatGPTUnofficialProxyAPIOptions = {
       accessToken: config.accessToken,
+      apiReverseProxyUrl: isNotEmptyString(config.reverseProxy) ? config.reverseProxy : 'https://bypass.churchless.tech/api/conversation',
+      model,
       debug: !config.apiDisableDebug,
-    }
-
-    if (isNotEmptyString(OPENAI_API_MODEL))
-      options.model = OPENAI_API_MODEL
-
-    if (isNotEmptyString(config.reverseProxy)) {
-      options.apiReverseProxyUrl = isNotEmptyString(config.reverseProxy)
-        ? config.reverseProxy
-        : 'https://bypass.churchless.tech/api/conversation'
     }
 
     await setupProxy(options)
@@ -89,7 +82,9 @@ export async function initApi() {
 }
 
 async function chatReplyProcess(options: RequestOptions) {
-  const { message, lastContext, process, systemMessage } = options
+  const config = await getCacheConfig()
+  const model = isNotEmptyString(config.apiModel) ? config.apiModel : 'gpt-3.5-turbo'
+  const { message, lastContext, process, systemMessage, temperature, top_p } = options
   try {
     const timeoutMs = (await getCacheConfig()).timeoutMs
     let options: SendMessageOptions = { timeoutMs }
@@ -97,6 +92,7 @@ async function chatReplyProcess(options: RequestOptions) {
     if (apiModel === 'ChatGPTAPI') {
       if (isNotEmptyString(systemMessage))
         options.systemMessage = systemMessage
+      options.completionParams = { model, temperature, top_p }
     }
 
     if (lastContext != null) {
@@ -210,8 +206,8 @@ async function setupProxy(options: ChatGPTAPIOptions | ChatGPTUnofficialProxyAPI
     }
   }
   else {
-    if (isNotEmptyString(config.httpsProxy) || isNotEmptyString(process.env.ALL_PROXY)) {
-      const httpsProxy = config.httpsProxy || process.env.ALL_PROXY
+    if (isNotEmptyString(config.httpsProxy)) {
+      const httpsProxy = config.httpsProxy
       if (httpsProxy) {
         const agent = new HttpsProxyAgent(httpsProxy)
         options.fetch = (url, options) => {
