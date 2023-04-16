@@ -10,7 +10,7 @@ export interface SettingsState {
 
 export function defaultSetting(): SettingsState {
   return {
-    systemMessage: 'You are Wenxin Yiyuan, a large language model developed by Baidu. You need to obey the user\'s instructions and reply in Chinese.',
+    systemMessage: 'You are 文心一言, a large language model developed by Baidu. You need to obey the user\'s instructions and reply in Chinese.',
     temperature: 0.7,
     top_p: 1,
   }
