@@ -33,6 +33,8 @@ export default {
     email: 'Email',
     password: 'Password',
     passwordConfirm: 'Confirm Password',
+    resetPassword: 'Reset Password',
+    resetPasswordMail: 'Send Reset Password Mail',
   },
   chat: {
     newChatButton: 'New Chat',
@@ -103,7 +105,7 @@ export default {
     loginSalt: 'Login Salt',
     loginSaltTip: 'Changes will invalidate all logged in',
     monthlyUsage: 'Monthly Usage',
-    auditEnabled: 'Audit Enabled',
+    auditEnabled: 'Third Party',
     auditProvider: 'Provider',
     auditApiKey: 'Api Key',
     auditApiSecret: 'Api Secret',
@@ -111,6 +113,8 @@ export default {
     auditBaiduLabel: 'Label',
     auditBaiduLabelTip: 'English comma separated, If empty, only politics.',
     auditBaiduLabelLink: 'Goto Label Detail',
+    auditCustomizeEnabled: 'Customize',
+    auditCustomizeWords: 'Sensitive Words',
   },
   store: {
     siderButton: 'Prompt Store',

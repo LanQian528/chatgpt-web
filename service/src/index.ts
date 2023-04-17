@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken'
 import * as dotenv from 'dotenv'
 import type { RequestProps } from './types'
 import type { ChatContext, ChatMessage } from './chatgpt'
-import { auditText, chatConfig, chatReplyProcess, currentModel, initApi, initAuditService } from './chatgpt'
+import { chatConfig, chatReplyProcess, containsSensitiveWords, currentModel, initApi, initAuditService } from './chatgpt'
 import { auth } from './middleware/auth'
 import { clearConfigCache, getCacheConfig, getOriginConfig } from './storage/config'
 import type { AuditConfig, ChatInfo, ChatOptions, Config, MailConfig, SiteConfig, UsageResponse, UserInfo } from './storage/model'
@@ -27,12 +27,13 @@ import {
   updateChat,
   updateConfig,
   updateUserInfo,
+  updateUserPassword,
   verifyUser,
 } from './storage/mongo'
 import { limiter } from './middleware/limiter'
 import { isEmail, isNotEmptyString } from './utils/is'
-import { sendNoticeMail, sendTestMail, sendVerifyMail, sendVerifyMailAdmin } from './utils/mail'
-import { checkUserVerify, checkUserVerifyAdmin, getUserVerifyUrl, getUserVerifyUrlAdmin, md5 } from './utils/security'
+import { sendNoticeMail, sendResetPasswordMail, sendTestMail, sendVerifyMail, sendVerifyMailAdmin } from './utils/mail'
+import { checkUserResetPassword, checkUserVerify, checkUserVerifyAdmin, getUserResetPasswordUrl, getUserVerifyUrl, getUserVerifyUrlAdmin, md5 } from './utils/security'
 import { rootAuth } from './middleware/rootAuth'
 
 dotenv.config()
@@ -277,6 +278,16 @@ router.post('/chat-process', [auth, limiter], async (req, res) => {
   let result
   let message: ChatInfo
   try {
+    const config = await getCacheConfig()
+    if (config.auditConfig.enabled || config.auditConfig.customizeEnabled) {
+      const userId = req.headers.userId.toString()
+      const user = await getUserById(userId)
+      if (user.email.toLowerCase() !== process.env.ROOT_USER && await containsSensitiveWords(config.auditConfig, prompt)) {
+        res.send({ status: 'Fail', message: '含有敏感词 | Contains sensitive words', data: null })
+        return
+      }
+    }
+
     message = regenerate
       ? await getChat(roomId, uuid)
       : await insertChat(uuid, prompt, roomId, options as ChatOptions)
@@ -293,11 +304,14 @@ router.post('/chat-process', [auth, limiter], async (req, res) => {
           detail: {
             choices: [
               {
-                finish_reason: chat.detail.choices[0].finish_reason,
+                finish_reason: undefined,
               },
             ],
           },
         }
+        if (chat.detail && chat.detail.choices.length > 0)
+          chuck.detail.choices[0].finish_reason = chat.detail.choices[0].finish_reason
+
         res.write(firstChunk ? JSON.stringify(chuck) : `\n${JSON.stringify(chuck)}`)
         firstChunk = false
       },
@@ -434,17 +448,15 @@ router.post('/user-login', async (req, res) => {
       throw new Error('用户名或密码为空 | Username or password is empty')
 
     const user = await getUser(username)
-    if (user == null
-      || user.status !== Status.Normal
-      || user.password !== md5(password)) {
-      if (user.password !== md5(password))
-        throw new Error('用户不存在或密码错误 | User does not exist or incorrect password.')
-      if (user != null && user.status === Status.PreVerify)
-        throw new Error('请去邮箱中验证 | Please verify in the mailbox')
-      if (user != null && user.status === Status.AdminVerify)
-        throw new Error('请等待管理员开通 | Please wait for the admin to activate')
+    if (user == null || user.password !== md5(password))
+      throw new Error('用户不存在或密码错误 | User does not exist or incorrect password.')
+    if (user.status === Status.PreVerify)
+      throw new Error('请去邮箱中验证 | Please verify in the mailbox')
+    if (user != null && user.status === Status.AdminVerify)
+      throw new Error('请等待管理员开通 | Please wait for the admin to activate')
+    if (user.status !== Status.Normal)
       throw new Error('账户状态异常 | Account status abnormal.')
-    }
+
     const config = await getCacheConfig()
     const token = jwt.sign({
       name: user.name ? user.name : user.email,
@@ -454,6 +466,43 @@ router.post('/user-login', async (req, res) => {
       root: username.toLowerCase() === process.env.ROOT_USER,
     }, config.siteConfig.loginSalt.trim())
     res.send({ status: 'Success', message: '登录成功 | Login successfully', data: { token } })
+  }
+  catch (error) {
+    res.send({ status: 'Fail', message: error.message, data: null })
+  }
+})
+
+router.post('/user-send-reset-mail', async (req, res) => {
+  try {
+    const { username } = req.body as { username: string }
+    if (!username || !isEmail(username))
+      throw new Error('请输入格式正确的邮箱 | Please enter a correctly formatted email address.')
+
+    const user = await getUser(username)
+    if (user == null || user.status !== Status.Normal)
+      throw new Error('账户状态异常 | Account status abnormal.')
+    await sendResetPasswordMail(username, await getUserResetPasswordUrl(username))
+    res.send({ status: 'Success', message: '重置邮件已发送 | Reset email has been sent', data: null })
+  }
+  catch (error) {
+    res.send({ status: 'Fail', message: error.message, data: null })
+  }
+})
+
+router.post('/user-reset-password', async (req, res) => {
+  try {
+    const { username, password, sign } = req.body as { username: string; password: string; sign: string }
+    if (!username || !password || !isEmail(username))
+      throw new Error('用户名或密码为空 | Username or password is empty')
+    if (!sign || !checkUserResetPassword(sign, username))
+      throw new Error('链接失效, 请重新发送 | The link is invalid, please resend.')
+    const user = await getUser(username)
+    if (user == null || user.status !== Status.Normal)
+      throw new Error('账户状态异常 | Account status abnormal.')
+
+    updateUserPassword(user._id.toString(), md5(password))
+
+    res.send({ status: 'Success', message: '密码重置成功 | Password reset successful', data: null })
   }
   catch (error) {
     res.send({ status: 'Fail', message: error.message, data: null })
@@ -602,7 +651,8 @@ router.post('/setting-audit', rootAuth, async (req, res) => {
     thisConfig.auditConfig = config
     const result = await updateConfig(thisConfig)
     clearConfigCache()
-    initAuditService(config)
+    if (config.enabled)
+      initAuditService(config)
     res.send({ status: 'Success', message: '操作成功 | Successfully', data: result.auditConfig })
   }
   catch (error) {
@@ -614,10 +664,12 @@ router.post('/audit-test', rootAuth, async (req, res) => {
   try {
     const { audit, text } = req.body as { audit: AuditConfig; text: string }
     const config = await getCacheConfig()
-    initAuditService(audit)
-    const result = await auditText(audit, text)
-    initAuditService(config.auditConfig)
-    res.send({ status: 'Success', message: !result ? '含敏感词 | Contains sensitive words' : '不含敏感词 | Does not contain sensitive words.', data: null })
+    if (audit.enabled)
+      initAuditService(audit)
+    const result = await containsSensitiveWords(audit, text)
+    if (audit.enabled)
+      initAuditService(config.auditConfig)
+    res.send({ status: 'Success', message: result ? '含敏感词 | Contains sensitive words' : '不含敏感词 | Does not contain sensitive words.', data: null })
   }
   catch (error) {
     res.send({ status: 'Fail', message: error.message, data: null })
