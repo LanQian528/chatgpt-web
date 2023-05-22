@@ -1,6 +1,6 @@
 import type { AxiosProgressEvent, GenericAbortSignal } from 'axios'
 import { get, post } from '@/utils/request'
-import type { AuditConfig, ConfigState, MailConfig, SiteConfig } from '@/components/common/Setting/model'
+import type { AuditConfig, CHATMODEL, ConfigState, MailConfig, SiteConfig } from '@/components/common/Setting/model'
 import { useAuthStore, useSettingStore } from '@/store'
 
 export function fetchChatAPI<T = any>(
@@ -121,6 +121,13 @@ export function fetchUpdateUserInfo<T = any>(name: string, avatar: string, descr
   })
 }
 
+export function fetchUpdateUserChatModel<T = any>(chatModel: CHATMODEL) {
+  return post<T>({
+    url: '/user-chat-model',
+    data: { chatModel },
+  })
+}
+
 export function fetchGetChatRooms<T = any>() {
   return get<T>({
     url: '/chatrooms',
@@ -145,6 +152,13 @@ export function fetchUpdateChatRoomPrompt<T = any>(prompt: string, roomId: numbe
   return post<T>({
     url: '/room-prompt',
     data: { prompt, roomId },
+  })
+}
+
+export function fetchUpdateChatRoomUsingContext<T = any>(using: boolean, roomId: number) {
+  return post<T>({
+    url: '/room-context',
+    data: { using, roomId },
   })
 }
 
