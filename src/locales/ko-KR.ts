@@ -64,7 +64,7 @@ export default {
     usageTotal: '총 소비 token',
     deleteUser: 'Delete User',
     setUserRole: 'Set Role',
-    deleteUserConfirm: 'Are you sure to delete this user?',
+    deleteUserConfirm: 'Are you sure to delete this user? After deletion, this email can never be registered or logged in again.',
     verifiedUser: 'Verified User',
     deleteKey: 'Delete Key',
     editKeyButton: 'Edit Key',
@@ -134,6 +134,7 @@ export default {
     userRoles: 'User Role',
     status: 'Status',
     chatModels: 'Chat Models',
+    remark: 'Remark',
   },
   store: {
     siderButton: '프롬프트 스토어',
