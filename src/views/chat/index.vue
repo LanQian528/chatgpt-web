@@ -506,7 +506,9 @@ const handleSyncChat
     // 直接刷 极小概率不请求
     chatStore.syncChat({ uuid: Number(uuid) } as Chat.History, undefined, () => {
       firstLoading.value = false
-      scrollToBottom()
+      const scrollRef = document.querySelector('#scrollRef')
+      if (scrollRef)
+        nextTick(() => scrollRef.scrollTop = scrollRef.scrollHeight)
       if (inputRef.value && !isMobile.value)
         inputRef.value?.focus()
     })
@@ -586,9 +588,11 @@ onMounted(() => {
   firstLoading.value = true
   handleSyncChat()
 
-  const chatModels = authStore.session?.chatModels
-  if (chatModels != null && chatModels.filter(d => d.value === userStore.userInfo.config.chatModel).length <= 0)
-    ms.error('你选择的模型已不存在，请重新选择 | The selected model not exists, please choose again.', { duration: 7000 })
+  if (authStore.token) {
+    const chatModels = authStore.session?.chatModels
+    if (chatModels != null && chatModels.filter(d => d.value === userStore.userInfo.config.chatModel).length <= 0)
+      ms.error('你选择的模型已不存在，请重新选择 | The selected model not exists, please choose again.', { duration: 7000 })
+  }
 })
 
 watch(() => chatStore.active, (newVal, oldVal) => {
