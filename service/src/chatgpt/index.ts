@@ -14,7 +14,7 @@ import { getCacheApiKeys, getCacheConfig, getOriginConfig } from '../storage/con
 import { sendResponse } from '../utils'
 import { hasAnyRole, isNotEmptyString } from '../utils/is'
 import type { ChatContext, ChatGPTUnofficialProxyAPIOptions, JWT, ModelConfig } from '../types'
-import { getChatByMessageId } from '../storage/mongo'
+import { getChatByMessageId, updateRoomAccountId } from '../storage/mongo'
 import type { RequestOptions } from './types'
 
 const { HttpsProxyAgent } = httpsProxyAgent
@@ -31,6 +31,7 @@ const ErrorCodeMessage: Record<string, string> = {
 }
 
 let auditService: TextAuditService
+const _lockedKeys: { key: string; lockedTime: number }[] = []
 
 export async function initApi(key: KeyConfig, chatModel: CHATMODEL) {
   // More Info: https://github.com/transitive-bullshit/chatgpt-api
@@ -83,12 +84,21 @@ export async function initApi(key: KeyConfig, chatModel: CHATMODEL) {
 }
 const processThreads: { userId: string; abort: AbortController; messageId: string }[] = []
 async function chatReplyProcess(options: RequestOptions) {
-  const model = options.chatModel
-  const key = options.key
-  const userId = options.userId
+  const model = options.user.config.chatModel
+  const key = await getRandomApiKey(options.user, options.user.config.chatModel, options.room.accountId)
+  const userId = options.user._id.toString()
   const messageId = options.messageId
   if (key == null || key === undefined)
     throw new Error('没有可用的配置。请再试一次 | No available configuration. Please try again.')
+
+  if (key.keyModel === 'ChatGPTUnofficialProxyAPI') {
+    if (!options.room.accountId)
+      updateRoomAccountId(userId, options.room.roomId, getAccountId(key.key))
+
+    if (options.lastContext && ((options.lastContext.conversationId && !options.lastContext.parentMessageId)
+      || (!options.lastContext.conversationId && options.lastContext.parentMessageId)))
+      throw new Error('无法在一个房间同时使用 AccessToken 以及 Api，请联系管理员，或新开聊天室进行对话 | Unable to use AccessToken and Api at the same time in the same room, please contact the administrator or open a new chat room for conversation')
+  }
 
   const { message, lastContext, process, systemMessage, temperature, top_p } = options
 
@@ -124,13 +134,20 @@ async function chatReplyProcess(options: RequestOptions) {
   }
   catch (error: any) {
     const code = error.statusCode
-    global.console.log(error)
+    if (code === 429 && (error.message.includes('Too Many Requests') || error.message.includes('Rate limit'))) {
+      // access token  Only one message at a time
+      if (options.tryCount++ < 3) {
+        _lockedKeys.push({ key: key.key, lockedTime: Date.now() })
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return await chatReplyProcess(options)
+      }
+    }
+    global.console.error(error)
     if (Reflect.has(ErrorCodeMessage, code))
       return sendResponse({ type: 'Fail', message: ErrorCodeMessage[code] })
     return sendResponse({ type: 'Fail', message: error.message ?? 'Please check the back-end console' })
   }
   finally {
-    releaseApiKey(key)
     const index = processThreads.findIndex(d => d.userId === userId)
     if (index > -1)
       processThreads.splice(index, 1)
@@ -262,10 +279,10 @@ function formatDate(date) {
 
 async function chatConfig() {
   const config = await getOriginConfig() as ModelConfig
-  if (config.apiModel === 'ChatGPTAPI')
-    config.balance = await fetchBalance()
-  else
-    config.accessTokenExpiredTime = await fetchAccessTokenExpiredTime()
+  // if (config.apiModel === 'ChatGPTAPI')
+  //   config.balance = await fetchBalance()
+  // else
+  //   config.accessTokenExpiredTime = await fetchAccessTokenExpiredTime()
   return sendResponse<ModelConfig>({
     type: 'Success',
     data: config,
@@ -326,54 +343,45 @@ async function getMessageById(id: string): Promise<ChatMessage | undefined> {
   else { return undefined }
 }
 
-const _lockedKeys: { key: string; count: number }[] = []
-const _oneTimeCount = 3 // api
 async function randomKeyConfig(keys: KeyConfig[]): Promise<KeyConfig | null> {
   if (keys.length <= 0)
     return null
-  let unsedKeys = keys.filter(d => _lockedKeys.filter(l => d.key === l.key).length <= 0
-    || _lockedKeys.filter(l => d.key === l.key)[0].count < _oneTimeCount)
+  // cleanup old locked keys
+  _lockedKeys.filter(d => d.lockedTime <= Date.now() - 1000 * 20).forEach(d => _lockedKeys.splice(_lockedKeys.indexOf(d), 1))
+
+  let unsedKeys = keys.filter(d => _lockedKeys.filter(l => d.key === l.key).length <= 0)
   const start = Date.now()
   while (unsedKeys.length <= 0) {
     if (Date.now() - start > 3000)
       break
     await new Promise(resolve => setTimeout(resolve, 1000))
-    unsedKeys = keys.filter(d => _lockedKeys.filter(l => d.key === l.key).length <= 0
-      || _lockedKeys.filter(l => d.key === l.key)[0].count < _oneTimeCount)
+    unsedKeys = keys.filter(d => _lockedKeys.filter(l => d.key === l.key).length <= 0)
   }
   if (unsedKeys.length <= 0)
     return null
   const thisKey = unsedKeys[Math.floor(Math.random() * unsedKeys.length)]
-  const thisLockedKey = _lockedKeys.filter(d => d.key === thisKey.key)
-  if (thisLockedKey.length <= 0)
-    _lockedKeys.push({ key: thisKey.key, count: 1 })
-  else
-    thisLockedKey[0].count++
   return thisKey
 }
 
-async function getRandomApiKey(user: UserInfo, chatModel: CHATMODEL): Promise<KeyConfig | undefined> {
-  const keys = (await getCacheApiKeys()).filter(d => hasAnyRole(d.userRoles, user.roles))
-  return randomKeyConfig(keys.filter(d => d.chatModels.includes(chatModel)))
+async function getRandomApiKey(user: UserInfo, chatModel: CHATMODEL, accountId?: string): Promise<KeyConfig | undefined> {
+  let keys = (await getCacheApiKeys()).filter(d => hasAnyRole(d.userRoles, user.roles))
+    .filter(d => d.chatModels.includes(chatModel))
+  if (accountId)
+    keys = keys.filter(d => d.keyModel === 'ChatGPTUnofficialProxyAPI' && getAccountId(d.key) === accountId)
+
+  return randomKeyConfig(keys)
 }
 
-async function releaseApiKey(key: KeyConfig) {
-  if (key == null || key === undefined)
-    return
-
-  const lockedKeys = _lockedKeys.filter(d => d.key === key.key)
-  if (lockedKeys.length > 0) {
-    if (lockedKeys[0].count <= 1) {
-      const index = _lockedKeys.findIndex(item => item.key === key.key)
-      if (index !== -1)
-        _lockedKeys.splice(index, 1)
-    }
-    else {
-      lockedKeys[0].count--
-    }
+function getAccountId(accessToken: string): string {
+  try {
+    const jwt = jwt_decode(accessToken) as JWT
+    return jwt['https://api.openai.com/auth'].user_id
+  }
+  catch (error) {
+    return ''
   }
 }
 
 export type { ChatContext, ChatMessage }
 
-export { chatReplyProcess, chatConfig, containsSensitiveWords, getRandomApiKey }
+export { chatReplyProcess, chatConfig, containsSensitiveWords }
