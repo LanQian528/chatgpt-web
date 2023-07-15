@@ -2,13 +2,14 @@ import express from 'express'
 import jwt from 'jsonwebtoken'
 import * as dotenv from 'dotenv'
 import { ObjectId } from 'mongodb'
+import { textTokens } from 'gpt-token'
 import type { RequestProps } from './types'
 import type { ChatMessage } from './chatgpt'
 import { abortChatProcess, chatConfig, chatReplyProcess, containsSensitiveWords, initAuditService } from './chatgpt'
 import { auth, getUserId } from './middleware/auth'
 import { clearApiKeyCache, clearConfigCache, getApiKeys, getCacheApiKeys, getCacheConfig, getOriginConfig } from './storage/config'
-import type { AuditConfig, CHATMODEL, ChatInfo, ChatOptions, Config, KeyConfig, MailConfig, SiteConfig, UsageResponse, UserInfo } from './storage/model'
-import { Status, UserRole, chatModelOptions } from './storage/model'
+import type { AuditConfig, CHATMODEL, ChatInfo, ChatOptions, Config, KeyConfig, MailConfig, SiteConfig, UserConfig, UserInfo } from './storage/model'
+import { Status, UsageResponse, UserRole, chatModelOptions } from './storage/model'
 import {
   clearChat,
   createChatRoom,
@@ -31,12 +32,13 @@ import {
   updateApiKeyStatus,
   updateChat,
   updateConfig,
+  updateRoomChatModel,
   updateRoomPrompt,
   updateRoomUsingContext,
+  updateUser,
   updateUserChatModel,
   updateUserInfo,
   updateUserPassword,
-  updateUserRole,
   updateUserStatus,
   upsertKey,
   verifyUser,
@@ -74,6 +76,7 @@ router.get('/chatrooms', auth, async (req, res) => {
         isEdit: false,
         prompt: r.prompt,
         usingContext: r.usingContext === undefined ? true : r.usingContext,
+        chatModel: r.chatModel,
       })
     })
     res.send({ status: 'Success', message: null, data: result })
@@ -115,6 +118,22 @@ router.post('/room-prompt', auth, async (req, res) => {
     const userId = req.headers.userId as string
     const { prompt, roomId } = req.body as { prompt: string; roomId: number }
     const success = await updateRoomPrompt(userId, roomId, prompt)
+    if (success)
+      res.send({ status: 'Success', message: 'Saved successfully', data: null })
+    else
+      res.send({ status: 'Fail', message: 'Saved Failed', data: null })
+  }
+  catch (error) {
+    console.error(error)
+    res.send({ status: 'Fail', message: 'Rename error', data: null })
+  }
+})
+
+router.post('/room-chatmodel', auth, async (req, res) => {
+  try {
+    const userId = req.headers.userId as string
+    const { chatModel, roomId } = req.body as { chatModel: CHATMODEL; roomId: number }
+    const success = await updateRoomChatModel(userId, roomId, chatModel)
     if (success)
       res.send({ status: 'Success', message: 'Saved successfully', data: null })
     else
@@ -395,6 +414,16 @@ router.post('/chat-process', [auth, limiter], async (req, res) => {
       room,
     })
     // return the whole response including usage
+    if (!result.data.detail?.usage) {
+      if (!result.data.detail)
+        result.data.detail = {}
+      result.data.detail.usage = new UsageResponse()
+      // 因为 token 本身不计算, 所以这里默认以 gpt 3.5 的算做一个伪统计
+      result.data.detail.usage.prompt_tokens = textTokens(prompt, 'gpt-3.5-turbo-0613')
+      result.data.detail.usage.completion_tokens = textTokens(result.data.text, 'gpt-3.5-turbo-0613')
+      result.data.detail.usage.total_tokens = result.data.detail.usage.prompt_tokens + result.data.detail.usage.completion_tokens
+      result.data.detail.usage.estimated = true
+    }
     res.write(`\n${JSON.stringify(result.data)}`)
   }
   catch (error) {
@@ -502,7 +531,7 @@ router.post('/user-register', authLimiter, async (req, res) => {
     }
     const newPassword = md5(password)
     const isRoot = username.toLowerCase() === process.env.ROOT_USER
-    await createUser(username, newPassword, isRoot)
+    await createUser(username, newPassword, isRoot ? [UserRole.Admin] : [UserRole.User])
 
     if (isRoot) {
       res.send({ status: 'Success', message: '注册成功 | Register success', data: null })
@@ -546,8 +575,19 @@ router.post('/session', async (req, res) => {
       key: string
       value: string
     }[] = []
+    let userInfo: { name: string; description: string; avatar: string; userId: string; root: boolean; roles: UserRole[]; config: UserConfig }
     if (userId != null) {
       const user = await getUserById(userId)
+      userInfo = {
+        name: user.name,
+        description: user.description,
+        avatar: user.avatar,
+        userId: user._id.toString(),
+        root: user.roles.includes(UserRole.Admin),
+        roles: user.roles,
+        config: user.config,
+      }
+
       const keys = (await getCacheApiKeys()).filter(d => hasAnyRole(d.userRoles, user.roles))
 
       const count: { key: string; count: number }[] = []
@@ -585,6 +625,7 @@ router.post('/session', async (req, res) => {
         title: config.siteConfig.siteTitle,
         chatModels,
         allChatModels: chatModelOptions,
+        userInfo,
       },
     })
   }
@@ -720,10 +761,17 @@ router.post('/user-status', rootAuth, async (req, res) => {
   }
 })
 
-router.post('/user-role', rootAuth, async (req, res) => {
+router.post('/user-edit', rootAuth, async (req, res) => {
   try {
-    const { userId, roles } = req.body as { userId: string; roles: UserRole[] }
-    await updateUserRole(userId, roles)
+    const { userId, email, password, roles } = req.body as { userId?: string; email: string; password: string; roles: UserRole[] }
+    if (userId) {
+      await updateUser(userId, roles, password)
+    }
+    else {
+      const newPassword = md5(password)
+      const user = await createUser(email, newPassword, roles)
+      await updateUserStatus(user._id.toString(), Status.Normal)
+    }
     res.send({ status: 'Success', message: '更新成功 | Update successfully' })
   }
   catch (error) {
@@ -738,10 +786,17 @@ router.post('/verify', authLimiter, async (req, res) => {
       throw new Error('Secret key is empty')
     const username = await checkUserVerify(token)
     const user = await getUser(username)
-    if (user != null && user.status === Status.Normal) {
-      res.send({ status: 'Fail', message: '账号已存在 | The email exists', data: null })
-      return
-    }
+    if (user == null)
+      throw new Error('账号不存在 | The email not exists')
+    if (user.status === Status.Deleted)
+      throw new Error('账号已禁用 | The email has been blocked')
+    if (user.status === Status.Normal)
+      throw new Error('账号已存在 | The email exists')
+    if (user.status === Status.AdminVerify)
+      throw new Error('请等待管理员开通 | Please wait for the admin to activate')
+    if (user.status !== Status.PreVerify)
+      throw new Error('账号异常 | Account abnormality')
+
     const config = await getCacheConfig()
     let message = '验证成功 | Verify successfully'
     if (config.siteConfig.registerReview) {
@@ -766,10 +821,11 @@ router.post('/verifyadmin', authLimiter, async (req, res) => {
       throw new Error('Secret key is empty')
     const username = await checkUserVerifyAdmin(token)
     const user = await getUser(username)
-    if (user != null && user.status === Status.Normal) {
-      res.send({ status: 'Fail', message: '账户已开通 | The email has been opened.', data: null })
-      return
-    }
+    if (user == null)
+      throw new Error('账号不存在 | The email not exists')
+    if (user.status !== Status.AdminVerify)
+      throw new Error(`账号异常 ${user.status} | Account abnormality ${user.status}`)
+
     await verifyUser(username, Status.Normal)
     await sendNoticeMail(username)
     res.send({ status: 'Success', message: '账户已激活 | Account has been activated.', data: null })
