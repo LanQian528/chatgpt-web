@@ -60,6 +60,11 @@ export async function initApi(key: KeyConfig, chatModel: CHATMODEL) {
       options.maxModelTokens = 16384
       options.maxResponseTokens = 4096
     }
+    else if (model.toLowerCase().includes('100k')) {
+      // If it's a '100k' model, set the maxModelTokens to 102400 and maxResponseTokens to 51200
+      options.maxModelTokens = 102400
+      options.maxResponseTokens = 25600
+    }
     else if (model.toLowerCase().includes('32k')) {
       // If it's a '32k' model, set the maxModelTokens to 32768 and maxResponseTokens to 8192
       options.maxModelTokens = 32768
