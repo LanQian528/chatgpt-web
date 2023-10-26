@@ -16,7 +16,7 @@ export class ConfigState {
 }
 
 // https://platform.openai.com/docs/models/overview
-export type CHATMODEL = 'gpt-3.5-turbo' | 'gpt-3.5-turbo-0301' | 'gpt-3.5-turbo-0613' | 'gpt-3.5-turbo-16k' | 'gpt-3.5-turbo-16k-0613' | 'gpt-4' | 'gpt-4-0314' | 'gpt-4-32k' | 'gpt-4-32k-0314' | 'gpt-4-0613' | 'gpt-4-32k-0613' | 'text-davinci-002-render-sha-mobile' | 'text-embedding-ada-002' | 'gpt-4-mobile' | 'gpt-4-browsing' | 'claude-2-100k' | 'claude-instant-100k'
+export type CHATMODEL = 'gpt-3.5-turbo' | 'gpt-3.5-turbo-0613' | 'gpt-3.5-turbo-16k' | 'gpt-3.5-turbo-16k-0613' | 'gpt-3.5-turbo-instruct' | 'gpt-4' | 'gpt-4-0613' | 'gpt-4-32k' | 'gpt-4-32k-0613' | 'text-embedding-ada-002' | 'claude-1-100k' | 'claude-2-100k' | 'net-gpt-3.5-turbo' | 'net-gpt-4' | 'gpt-4-dalle' | 'gpt-4-v' | 'midjourney'
 
 export class UserConfig {
   chatModel?: CHATMODEL
