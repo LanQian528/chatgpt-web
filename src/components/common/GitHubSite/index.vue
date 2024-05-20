@@ -1,9 +1,9 @@
-<!--<script setup lang="ts">-->
-<!--const gitCommitSha = (import.meta.env.VITE_GIT_COMMIT_HASH || 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').slice(0, 7)-->
-<!--const releaseVersion = import.meta.env.VITE_RELEASE_VERSION || 'v0.0.0'-->
-<!--</script>-->
+<script setup lang="ts">
+// const gitCommitSha = (import.meta.env.VITE_GIT_COMMIT_HASH || 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').slice(0, 7)
+// const releaseVersion = import.meta.env.VITE_RELEASE_VERSION || 'v0.0.0'
+</script>
 
-<!--<template>-->
+<template>
 <!--  <div class="text-center text-xs">-->
 <!--    <span class="text-neutral-400">-->
 <!--      Powered by-->
@@ -15,4 +15,4 @@
 <!--    </a>-->
 <!--    <span v-text="`${releaseVersion}-${gitCommitSha}`" />-->
 <!--  </div>-->
-<!--</template>-->
+</template>
