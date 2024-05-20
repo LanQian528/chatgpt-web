@@ -14,7 +14,7 @@ fs.mkdir('uploads').then(() => {
 export async function convertImageUrl(uploadFileKey: string): Promise<string> {
   const fileData = await fs.readFile(`uploads/${uploadFileKey}`)
   // 判断文件格式
-	const fileTypeResult = await fileType.fromBuffer(fileData);
+	const fileTypeResult = await fileType.fileTypeFromBuffer(fileData);
 	let mimeType: string | undefined; // 声明 mimeType 的类型为 string 或 undefined
 	if (fileTypeResult) {
 		mimeType = fileTypeResult.mime;
