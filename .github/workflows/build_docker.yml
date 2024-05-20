@@ -2,34 +2,37 @@ name: build_docker
 
 on:
   push:
-    branches: [main]
-  release:
-    types: [created] # This will only run on new releases
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'docker-compose.yml'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  docker_hub_description:
-    name: Docker Hub description
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            README.en.md
-      - name: Docker Hub Description
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ${{ env.REGISTRY }}
-          # Description length should be no longer than 100 characters.
-          short-description: A third-party ChatGPT Web UI page, through the official OpenAI completion API.
-          readme-filepath: README.en.md
-          enable-url-completion: true
+#  docker_hub_description:
+#    name: Docker Hub description
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#        with:
+#          sparse-checkout: |
+#            README.en.md
+#      - name: Docker Hub Description
+#        uses: peter-evans/dockerhub-description@v4
+#        with:
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#          registry: ${{ env.REGISTRY }}
+#          # Description length should be no longer than 100 characters.
+#          short-description: A third-party ChatGPT Web UI page, through the official OpenAI completion API.
+#          readme-filepath: README.en.md
+#          enable-url-completion: true
 
   build_docker:
     name: Build docker
