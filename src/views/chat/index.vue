@@ -736,7 +736,6 @@ onUnmounted(() => {
                 :show-file-list="false"
                 response-type="json"
 								directory-dnd="true"
-                accept=""
                 @finish="handleFinish"
               >
                 <span class="text-xl text-[#4f555e] dark:text-white">
