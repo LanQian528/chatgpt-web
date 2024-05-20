@@ -13,15 +13,14 @@ export class ConfigState {
   siteConfig?: SiteConfig
   mailConfig?: MailConfig
   auditConfig?: AuditConfig
+  announceConfig?: AnnounceConfig
+}
+
+export class UserConfig {
+  chatModel?: string
 }
 
 // https://platform.openai.com/docs/models/overview
-export type CHATMODEL = 'gpt-3.5-turbo' | 'gpt-3.5-turbo-0613' | 'gpt-3.5-turbo-16k' | 'gpt-3.5-turbo-16k-0613' | 'gpt-3.5-turbo-instruct' | 'gpt-4' | 'gpt-4-0613' | 'gpt-4-32k' | 'gpt-4-32k-0613' | 'text-embedding-ada-002' | 'claude-1-100k' | 'claude-2-100k' | 'net-gpt-3.5-turbo' | 'net-gpt-4' | 'gpt-4-dalle' | 'gpt-4-v' | 'midjourney'
-
-export class UserConfig {
-  chatModel?: CHATMODEL
-}
-
 export class SiteConfig {
   siteTitle?: string
   loginEnabled?: boolean
@@ -30,6 +29,10 @@ export class SiteConfig {
   registerReview?: boolean
   registerMails?: string
   siteDomain?: string
+  chatModels?: string
+  globalAmount?: number
+  usageCountLimit?: boolean
+  showWatermark?: boolean
 }
 
 export class MailConfig {
@@ -38,6 +41,7 @@ export class MailConfig {
   smtpTsl?: boolean
   smtpUserName?: string
   smtpPassword?: string
+  smtpFrom?: string
 }
 export type TextAuditServiceProvider = 'baidu' //  | 'ali'
 
@@ -60,6 +64,11 @@ export class AuditConfig {
   textType?: TextAudioType
   customizeEnabled?: boolean
   sensitiveWords?: string
+}
+
+export class AnnounceConfig {
+  enabled?: boolean
+  announceWords?: string
 }
 
 export enum Status {
@@ -88,11 +97,12 @@ export class KeyConfig {
   _id?: string
   key: string
   keyModel: APIMODEL
-  chatModels: CHATMODEL[]
+  chatModels: string[]
   userRoles: UserRole[]
   status: Status
   remark: string
-  constructor(key: string, keyModel: APIMODEL, chatModels: CHATMODEL[], userRoles: UserRole[], remark: string) {
+  baseUrl?: string
+  constructor(key: string, keyModel: APIMODEL, chatModels: string[], userRoles: UserRole[], remark: string) {
     this.key = key
     this.keyModel = keyModel
     this.chatModels = chatModels
@@ -112,7 +122,7 @@ export const apiModelOptions = ['ChatGPTAPI', 'ChatGPTUnofficialProxyAPI'].map((
   }
 })
 
-export const userRoleOptions = Object.values(UserRole).filter(d => isNaN(Number(d))).map((role) => {
+export const userRoleOptions = Object.values(UserRole).filter(d => Number.isNaN(Number(d))).map((role) => {
   return {
     label: role as string,
     key: role as string,
@@ -125,7 +135,38 @@ export class UserInfo {
   email?: string
   password?: string
   roles: UserRole[]
+  remark?: string
+  useAmount?: number
+  // 配合改造，增加额度信息 and it's switch
+  limit_switch?: boolean
   constructor(roles: UserRole[]) {
     this.roles = roles
   }
+}
+
+export class UserPassword {
+  oldPassword?: string
+  newPassword?: string
+  confirmPassword?: string
+}
+
+export class TwoFAConfig {
+  enaled: boolean
+  userName: string
+  secretKey: string
+  otpauthUrl: string
+  testCode: string
+  constructor() {
+    this.enaled = false
+    this.userName = ''
+    this.secretKey = ''
+    this.otpauthUrl = ''
+    this.testCode = ''
+  }
+}
+
+export interface GiftCard {
+  cardno: string
+  amount: number
+  redeemed: number
 }

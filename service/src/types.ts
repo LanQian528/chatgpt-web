@@ -1,10 +1,12 @@
 import type { FetchFn } from 'chatgpt'
+import type { JwtPayload } from 'jsonwebtoken'
 
 export interface RequestProps {
   roomId: number
   uuid: number
   regenerate: boolean
   prompt: string
+  uploadFileKeys?: string[]
   options?: ChatContext
   systemMessage: string
   temperature?: number
@@ -54,4 +56,26 @@ export interface JWT {
   'exp': number
   'azp': string
   'scope': string
+}
+
+export interface AuthJwtPayload extends JwtPayload {
+  name: string
+  avatar: string
+  description: string
+  userId: string
+  root: boolean
+  config: any
+}
+
+export class TwoFAConfig {
+  enaled: boolean
+  userName: string
+  secretKey: string
+  otpauthUrl: string
+  constructor() {
+    this.enaled = false
+    this.userName = ''
+    this.secretKey = ''
+    this.otpauthUrl = ''
+  }
 }
