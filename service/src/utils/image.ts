@@ -14,10 +14,13 @@ fs.mkdir('uploads').then(() => {
 export async function convertImageUrl(uploadFileKey: string): Promise<string> {
   const fileData = await fs.readFile(`uploads/${uploadFileKey}`)
   // 判断文件格式
-  let mimeType = await fileType.fileTypeFromBuffer(fileData)
-
-	if (!mimeType) {
-		mimeType = 'text/plain'
+	const fileTypeResult = await fileType.fromBuffer(fileData);
+	let mimeType: string | undefined; // 声明 mimeType 的类型为 string 或 undefined
+	if (fileTypeResult) {
+		mimeType = fileTypeResult.mime;
+	} else {
+		// 如果无法识别文件类型，则假设是文本文件
+		mimeType = 'text/plain';
 	}
 	// 将文件数据转换为 Base64 编码的字符串
   const base64File = fileData.toString('base64')
