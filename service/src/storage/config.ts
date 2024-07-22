@@ -117,7 +117,7 @@ export async function getOriginConfig() {
   }
 
   if (!isNotEmptyString(config.siteConfig.chatModels))
-    config.siteConfig.chatModels = 'gpt-3.5-turbo,gpt-4-turbo-preview,gpt-4-vision-preview'
+    config.siteConfig.chatModels = 'gpt-4o-mini,gpt-4o,gpt-4-turbo'
 
   return config
 }

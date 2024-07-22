@@ -56,24 +56,24 @@ export async function initApi(key: KeyConfig, chatModel: string, maxContextCount
     }
 
     if (model.toLowerCase().includes('gpt-4-turbo')) {
-      options.maxModelTokens = 131072
-      options.maxResponseTokens = 32768
+      options.maxModelTokens = 128000
+      options.maxResponseTokens = 4096
     }
 		else if (model.toLowerCase().includes('gpt-4o')) {
-      options.maxModelTokens = 131072
-      options.maxResponseTokens = 32768
+      options.maxModelTokens = 128000
+      options.maxResponseTokens = 4096
     }
 		else if (model.toLowerCase().includes('preview')) {
-      options.maxModelTokens = 131072
-      options.maxResponseTokens = 32768
+      options.maxModelTokens = 128000
+      options.maxResponseTokens = 4096
+    }
+		else if (model.toLowerCase().includes('claude-3')) {
+      options.maxModelTokens = 200000
+      options.maxResponseTokens = 50000
     }
     else if (model.toLowerCase().includes('16k')) {
       options.maxModelTokens = 16384
       options.maxResponseTokens = 4096
-    }
-		else if (model.toLowerCase().includes('claude-3')) {
-      options.maxModelTokens = 204800
-      options.maxResponseTokens = 51200
     }
     else if (model.toLowerCase().includes('32k')) {
       options.maxModelTokens = 32768
