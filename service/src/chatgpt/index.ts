@@ -69,7 +69,7 @@ export async function initApi(key: KeyConfig, chatModel: string, maxContextCount
     }
 		else if (model.toLowerCase().includes('claude-3')) {
       options.maxModelTokens = 200000
-      options.maxResponseTokens = 50000
+      options.maxResponseTokens = 4096
     }
     else if (model.toLowerCase().includes('16k')) {
       options.maxModelTokens = 16384
@@ -77,7 +77,7 @@ export async function initApi(key: KeyConfig, chatModel: string, maxContextCount
     }
     else if (model.toLowerCase().includes('32k')) {
       options.maxModelTokens = 32768
-      options.maxResponseTokens = 8192
+      options.maxResponseTokens = 4096
     }
     else if (model.toLowerCase().includes('gpt-4')) {
       options.maxModelTokens = 8192
